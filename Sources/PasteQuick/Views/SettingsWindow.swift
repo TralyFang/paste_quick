@@ -66,9 +66,13 @@ struct SettingsWindow: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("使用说明")
                     .font(.headline)
-                Text("1) 在任意应用按下快捷键唤出历史列表；2) 方向键选择，Enter 粘贴；3) 如需权限，请在“系统设置 > 隐私与安全性 > 辅助功能”授权。")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("1) 在任意应用按下快捷键唤出历史列表")
+                    Text("2) 方向键选择，Enter 粘贴；Esc 关闭")
+                    Text("3) 首次运行如需辅助功能权限，请在“系统设置 > 隐私与安全性 > 辅助功能”授权")
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
             }
             
             Spacer()

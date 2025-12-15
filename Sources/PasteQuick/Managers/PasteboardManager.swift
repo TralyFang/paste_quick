@@ -241,6 +241,15 @@ class PasteboardManager: ObservableObject {
         }
     }
     
+    /// 立即同步保存（应用退出前调用）
+    func saveHistorySync() {
+        let snapshot = items
+        ensureStorageDirectory()
+        if let data = try? JSONEncoder().encode(snapshot) {
+            try? data.write(to: storageURL, options: .atomic)
+        }
+    }
+    
     private func trimHistoryAndSave() {
         if items.count > maxItems {
             items = Array(items.prefix(maxItems))

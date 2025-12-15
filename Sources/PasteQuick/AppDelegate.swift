@@ -1,7 +1,7 @@
 import Cocoa
 import SwiftUI
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow?
     var settingsWindow: NSWindow?
     var statusItem: NSStatusItem?
@@ -73,6 +73,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window?.isMovableByWindowBackground = true
         window?.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window?.standardWindowButton(.zoomButton)?.isHidden = true
+        window?.isReleasedWhenClosed = false
+        window?.delegate = self
         
         // 居中显示
         if let screen = NSScreen.main {
@@ -102,7 +104,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc func windowWillClose() {
-        window = nil
+        // 不退出应用，仅隐藏窗口
+        window?.orderOut(nil)
+        // 保留引用，便于再次显示
+    }
+    
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        // 捕获关闭按钮行为，改为隐藏
+        sender.orderOut(nil)
+        return false
     }
     
     func showSettingsWindow() {
@@ -137,6 +147,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         HotKeyManager.shared.unregister()
         pasteboardManager.stopMonitoring()
+        pasteboardManager.saveHistorySync() // 同步保存历史，防止退出时丢失
     }
 }
 
