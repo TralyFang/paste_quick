@@ -1,0 +1,21 @@
+.DS_Store
+/.build
+/Packages
+xcuserdata/
+DerivedData/
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+*.xcodeproj
+!default.xcodeproj
+
+# 打包产物
+*.app
+*.dmg
+*.pkg
+release/
+temp_dmg/
+
+# 图标文件
+AppIcon.icns
+.icon-assets/
