@@ -63,18 +63,26 @@ class PasteboardManager: ObservableObject {
     
     /// 捕获当前粘贴板内容
     private func captureCurrentPasteboard() {
+        var representations: [String: Data] = [:]
+        
         // 检查图片
         if let image = pasteboard.readObjects(forClasses: [NSImage.self], options: nil)?.first as? NSImage {
             if let imageData = image.tiffRepresentation,
                let bitmap = NSBitmapImageRep(data: imageData),
                let pngData = bitmap.representation(using: .png, properties: [:]) {
                 
+                // 保存原始 tiff
+                if let tiff = image.tiffRepresentation {
+                    representations[NSPasteboard.PasteboardType.tiff.rawValue] = tiff
+                }
+                
                 let preview = "🖼️ 图片 (\(Int(image.size.width))x\(Int(image.size.height)))"
                 let item = PasteboardItem(
                     type: .image,
                     content: pngData,
                     preview: preview,
-                    imageData: pngData
+                    imageData: pngData,
+                    representations: representations.isEmpty ? nil : representations
                 )
                 addItem(item)
                 return
@@ -83,12 +91,14 @@ class PasteboardManager: ObservableObject {
         
         // 检查富文本
         if let rtfData = pasteboard.data(forType: .rtf) {
+            representations[NSPasteboard.PasteboardType.rtf.rawValue] = rtfData
             if let attributedString = NSAttributedString(rtf: rtfData, documentAttributes: nil) {
                 let preview = String(attributedString.string.prefix(100))
                 let item = PasteboardItem(
                     type: .richText,
                     content: rtfData,
-                    preview: preview.isEmpty ? "📄 富文本" : preview
+                    preview: preview.isEmpty ? "📄 富文本" : preview,
+                    representations: representations.isEmpty ? nil : representations
                 )
                 addItem(item)
                 return
@@ -97,14 +107,15 @@ class PasteboardManager: ObservableObject {
         
         // 检查 HTML
         if let htmlData = pasteboard.data(forType: .html) {
-            if let htmlString = String(data: htmlData, encoding: .utf8) {
-                let preview = htmlString
-                    .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-                    .prefix(100)
+            representations[NSPasteboard.PasteboardType.html.rawValue] = htmlData
+            if let attributed = NSAttributedString(html: htmlData, options: [.documentType: NSAttributedString.DocumentType.html], documentAttributes: nil) {
+                let plain = attributed.string
+                let preview = plain.prefix(200)
                 let item = PasteboardItem(
                     type: .richText,
                     content: htmlData,
-                    preview: String(preview).isEmpty ? "📄 HTML 内容" : String(preview)
+                    preview: String(preview).isEmpty ? "📄 HTML 内容" : String(preview),
+                    representations: representations.isEmpty ? nil : representations
                 )
                 addItem(item)
                 return
@@ -122,10 +133,17 @@ class PasteboardManager: ObservableObject {
             
             let preview = String(string.prefix(100))
             if let textData = string.data(using: .utf8) {
+                if let plainData = pasteboard.data(forType: .string) {
+                    representations[NSPasteboard.PasteboardType.string.rawValue] = plainData
+                }
+                if let utf8Data = pasteboard.data(forType: NSPasteboard.PasteboardType("public.utf8-plain-text")) {
+                    representations["public.utf8-plain-text"] = utf8Data
+                }
                 let item = PasteboardItem(
                     type: .text,
                     content: textData,
-                    preview: preview
+                    preview: preview,
+                    representations: representations.isEmpty ? nil : representations
                 )
                 addItem(item)
             }
@@ -149,34 +167,76 @@ class PasteboardManager: ObservableObject {
     }
     
     /// 将指定条目粘贴到系统粘贴板
-    func pasteItem(_ item: PasteboardItem) {
+    /// 将指定条目写入系统粘贴板，并可选模拟 Cmd+V
+    func pasteItem(_ item: PasteboardItem, simulatePaste: Bool = true) {
         pasteboard.clearContents()
         
-        switch item.type {
-        case .image:
-            if let image = NSImage(data: item.content) {
-                pasteboard.writeObjects([image])
+        // 优先还原存储的所有格式
+        var wroteAny = false
+        if let reps = item.representations {
+            for (uti, data) in reps {
+                let type = NSPasteboard.PasteboardType(uti)
+                if pasteboard.setData(data, forType: type) {
+                    wroteAny = true
+                }
             }
-        case .text:
-            if let string = String(data: item.content, encoding: .utf8) {
-                pasteboard.setString(string, forType: .string)
-            }
-        case .richText:
-            // 尝试作为 RTF
-            if pasteboard.setData(item.content, forType: .rtf) {
-                return
-            }
-            // 尝试作为 HTML
-            if pasteboard.setData(item.content, forType: .html) {
-                return
-            }
-            // 回退到纯文本
-            if let string = String(data: item.content, encoding: .utf8) {
-                pasteboard.setString(string, forType: .string)
-            }
-        case .unknown:
-            break
         }
+        
+        if !wroteAny {
+            switch item.type {
+            case .image:
+                if let image = NSImage(data: item.content) {
+                    pasteboard.writeObjects([image])
+                }
+            case .text:
+                if let string = String(data: item.content, encoding: .utf8) {
+                    pasteboard.setString(string, forType: .string)
+                }
+            case .richText:
+                let plainText: String? = {
+                    if let attr = NSAttributedString(rtf: item.content, documentAttributes: nil) {
+                        return attr.string
+                    }
+                    if let attributed = NSAttributedString(html: item.content, options: [.documentType: NSAttributedString.DocumentType.html], documentAttributes: nil) {
+                        return attributed.string
+                    }
+                    return String(data: item.content, encoding: .utf8)
+                }()
+                
+                pasteboard.setData(item.content, forType: .rtf)
+                pasteboard.setData(item.content, forType: .html)
+                if let text = plainText {
+                    pasteboard.setString(text, forType: .string)
+                }
+            case .unknown:
+                break
+            }
+        } else {
+            // 如果写入了多格式，仍然补充纯文本，避免部分应用读不到
+            if let text = {
+                switch item.type {
+                case .text:
+                    return String(data: item.content, encoding: .utf8)
+                case .richText:
+                    if let attr = NSAttributedString(rtf: item.content, documentAttributes: nil) {
+                        return attr.string
+                    }
+                    if let attributed = NSAttributedString(html: item.content, options: [.documentType: NSAttributedString.DocumentType.html], documentAttributes: nil) {
+                        return attributed.string
+                    }
+                    return String(data: item.content, encoding: .utf8)
+                case .image, .unknown:
+                    return nil
+                }
+            }() {
+                pasteboard.setString(text, forType: .string)
+            }
+        }
+        
+        // 将当前条目移动到最新（顶端），避免重复新增
+        promote(item)
+        
+        guard simulatePaste else { return }
         
         // 模拟 Cmd+V 快捷键来粘贴
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -206,6 +266,18 @@ class PasteboardManager: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             self?.items.removeAll()
             self?.saveHistoryAsync()
+        }
+    }
+    
+    /// 将指定条目移动到列表顶部
+    private func promote(_ item: PasteboardItem) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if let idx = self.items.firstIndex(where: { $0.id == item.id }) {
+                let target = self.items.remove(at: idx)
+                self.items.insert(target, at: 0)
+                self.trimHistoryAndSave()
+            }
         }
     }
     

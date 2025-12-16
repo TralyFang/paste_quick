@@ -17,19 +17,29 @@ struct PasteboardItem: Identifiable, Codable {
     let preview: String
     let timestamp: Date
     let imageData: Data? // 用于图片类型的预览
+    let representations: [String: Data]? // 记录所有可用的粘贴板类型数据（UTI -> Data）
     
-    init(id: UUID = UUID(), type: PasteboardItemType, content: Data, preview: String, timestamp: Date = Date(), imageData: Data? = nil) {
+    init(
+        id: UUID = UUID(),
+        type: PasteboardItemType,
+        content: Data,
+        preview: String,
+        timestamp: Date = Date(),
+        imageData: Data? = nil,
+        representations: [String: Data]? = nil
+    ) {
         self.id = id
         self.type = type
         self.content = content
         self.preview = preview
         self.timestamp = timestamp
         self.imageData = imageData
+        self.representations = representations
     }
     
     // Codable 支持
     enum CodingKeys: String, CodingKey {
-        case id, content, preview, timestamp, imageData, typeRaw
+        case id, content, preview, timestamp, imageData, representations, typeRaw
     }
     
     init(from decoder: Decoder) throws {
@@ -41,6 +51,7 @@ struct PasteboardItem: Identifiable, Codable {
         preview = try container.decode(String.self, forKey: .preview)
         timestamp = try container.decode(Date.self, forKey: .timestamp)
         imageData = try container.decodeIfPresent(Data.self, forKey: .imageData)
+        representations = try container.decodeIfPresent([String: Data].self, forKey: .representations)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -51,6 +62,7 @@ struct PasteboardItem: Identifiable, Codable {
         try container.encode(preview, forKey: .preview)
         try container.encode(timestamp, forKey: .timestamp)
         try container.encodeIfPresent(imageData, forKey: .imageData)
+        try container.encodeIfPresent(representations, forKey: .representations)
     }
 }
 

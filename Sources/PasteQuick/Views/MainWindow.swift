@@ -31,6 +31,25 @@ struct MainWindow: View {
                             isSearchFocused = true
                         }
                     }
+                
+                Spacer()
+                
+                // 上下按钮
+                HStack(spacing: 8) {
+                    Button {
+                        moveUp()
+                    } label: {
+                        Image(systemName: "chevron.up")
+                    }
+                    .help("上一条 (↑)")
+                    
+                    Button {
+                        moveDown()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                    }
+                    .help("下一条 (↓)")
+                }
             }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
@@ -54,7 +73,7 @@ struct MainWindow: View {
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 selectedIndex = index
-                                pasteItem(item)
+                                pasteItem(item, simulatePaste: true)
                             }
                             .onAppear {
                                 if selectedIndex == nil {
@@ -98,24 +117,25 @@ struct MainWindow: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PasteItem"))) { notification in
             if let index = selectedIndex, index < filteredItems.count {
                 let item = filteredItems[index]
-                pasteItem(item)
+                pasteItem(item, simulatePaste: true)
             }
         }
         // 键盘快捷键
         .background(KeyEventHandler(
             onUp: {
-                if let current = selectedIndex, current > 0 {
-                    selectedIndex = current - 1
-                }
+                moveUp()
             },
             onDown: {
-                if let current = selectedIndex, current < filteredItems.count - 1 {
-                    selectedIndex = current + 1
-                }
+                moveDown()
             },
             onEnter: {
                 if let index = selectedIndex, index < filteredItems.count {
-                    pasteItem(filteredItems[index])
+                    pasteItem(filteredItems[index], simulatePaste: true)
+                }
+            },
+            onCopy: {
+                if let index = selectedIndex, index < filteredItems.count {
+                    pasteItem(filteredItems[index], simulatePaste: false)
                 }
             },
             onEscape: {
@@ -124,9 +144,23 @@ struct MainWindow: View {
         ))
     }
     
-    private func pasteItem(_ item: PasteboardItem) {
-        pasteboardManager.pasteItem(item)
+    private func pasteItem(_ item: PasteboardItem, simulatePaste: Bool) {
+        pasteboardManager.pasteItem(item, simulatePaste: simulatePaste)
         onClose?()
+    }
+    
+    private func moveUp() {
+        if let current = selectedIndex, current > 0 {
+            selectedIndex = current - 1
+        }
+    }
+    
+    private func moveDown() {
+        if let current = selectedIndex, current < filteredItems.count - 1 {
+            selectedIndex = current + 1
+        } else if selectedIndex == nil, !filteredItems.isEmpty {
+            selectedIndex = 0
+        }
     }
 }
 
@@ -197,6 +231,7 @@ struct KeyEventHandler: NSViewRepresentable {
     let onUp: () -> Void
     let onDown: () -> Void
     let onEnter: () -> Void
+    let onCopy: () -> Void
     let onEscape: () -> Void
     
     func makeNSView(context: Context) -> KeyEventView {
@@ -204,7 +239,11 @@ struct KeyEventHandler: NSViewRepresentable {
         view.onUp = onUp
         view.onDown = onDown
         view.onEnter = onEnter
+        view.onCopy = onCopy
         view.onEscape = onEscape
+        DispatchQueue.main.async {
+            view.window?.makeFirstResponder(view)
+        }
         return view
     }
     
@@ -215,11 +254,26 @@ class KeyEventView: NSView {
     var onUp: (() -> Void)?
     var onDown: (() -> Void)?
     var onEnter: (() -> Void)?
+    var onCopy: (() -> Void)?
     var onEscape: (() -> Void)?
     
     override var acceptsFirstResponder: Bool { true }
     
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        DispatchQueue.main.async { [weak self] in
+            self?.window?.makeFirstResponder(self)
+        }
+    }
+    
     override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command),
+           let chars = event.charactersIgnoringModifiers?.lowercased() {
+            if chars == "c" {
+                onCopy?()
+                return
+            }
+        }
         switch event.keyCode {
         case 126: // Up arrow
             onUp?()
