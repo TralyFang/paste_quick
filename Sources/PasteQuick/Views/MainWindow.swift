@@ -256,6 +256,7 @@ class KeyEventView: NSView {
     var onEnter: (() -> Void)?
     var onCopy: (() -> Void)?
     var onEscape: (() -> Void)?
+    private var localMonitor: Any?
     
     override var acceptsFirstResponder: Bool { true }
     
@@ -264,27 +265,53 @@ class KeyEventView: NSView {
         DispatchQueue.main.async { [weak self] in
             self?.window?.makeFirstResponder(self)
         }
+        
+        // 拦截窗口内的按键事件，即使焦点在 TextField 也能响应方向键
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self else { return event }
+            if self.handle(event: event) {
+                return nil
+            }
+            return event
+        }
+    }
+    
+    deinit {
+        if let monitor = localMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
     
     override func keyDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.command),
-           let chars = event.charactersIgnoringModifiers?.lowercased() {
-            if chars == "c" {
-                onCopy?()
-                return
-            }
+        if handle(event: event) {
+            return
         }
+        super.keyDown(with: event)
+    }
+    
+    private func handle(event: NSEvent) -> Bool {
+        if event.modifierFlags.contains(.command),
+           let chars = event.charactersIgnoringModifiers?.lowercased(),
+           chars == "c" {
+            onCopy?()
+            return true
+        }
+        
         switch event.keyCode {
         case 126: // Up arrow
             onUp?()
+            return true
         case 125: // Down arrow
             onDown?()
+            return true
         case 36: // Enter
             onEnter?()
+            return true
         case 53: // Escape
             onEscape?()
+            return true
         default:
-            super.keyDown(with: event)
+            return false
         }
     }
 }
