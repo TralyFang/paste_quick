@@ -153,14 +153,14 @@ struct MainWindow: View {
     
     private func deleteItem(_ item: PasteboardItem) {
         pasteboardManager.removeItem(item)
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            let count = filteredItems.count
+        // 更新选中索引，确保不会越界
+        DispatchQueue.main.async {
+            let count = self.filteredItems.count
             if count == 0 {
-                selectedIndex = nil
+                self.selectedIndex = nil
             } else {
-                let current = selectedIndex ?? 0
-                selectedIndex = min(current, count - 1)
+                let current = self.selectedIndex ?? 0
+                self.selectedIndex = min(current, count - 1)
             }
         }
     }
