@@ -15,6 +15,9 @@
 - ✅ 原生 macOS 体验
 - ✅ 设置页：修改历史上限、录制全局快捷键
 
+### 截图示例
+![历史记录示例](image/record.png)
+![设置页面](image/setting.jpg)
 ## 技术栈
 
 - Swift 5.9+
