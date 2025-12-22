@@ -407,6 +407,7 @@ class PasteboardManager: ObservableObject {
     func removeItem(_ item: PasteboardItem) {
         DispatchQueue.main.async { [weak self] in
             self?.items.removeAll { $0.id == item.id }
+            self?.saveHistoryAsync()
         }
     }
     

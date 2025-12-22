@@ -75,6 +75,13 @@ struct MainWindow: View {
                                 selectedIndex = index
                                 pasteItem(item, simulatePaste: true)
                             }
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    deleteItem(item)
+                                } label: {
+                                    Text("删除此条")
+                                }
+                            }
                             .onAppear {
                                 if selectedIndex == nil {
                                     selectedIndex = 0
@@ -142,6 +149,20 @@ struct MainWindow: View {
                 onClose?()
             }
         ))
+    }
+    
+    private func deleteItem(_ item: PasteboardItem) {
+        pasteboardManager.removeItem(item)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let count = filteredItems.count
+            if count == 0 {
+                selectedIndex = nil
+            } else {
+                let current = selectedIndex ?? 0
+                selectedIndex = min(current, count - 1)
+            }
+        }
     }
     
     private func pasteItem(_ item: PasteboardItem, simulatePaste: Bool) {
