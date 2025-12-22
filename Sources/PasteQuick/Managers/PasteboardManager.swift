@@ -65,15 +65,102 @@ class PasteboardManager: ObservableObject {
     private func captureCurrentPasteboard() {
         var representations: [String: Data] = [:]
         
-        // 检查图片
+        // 检查图片 - 优先检查文件URL（当用户复制图片文件时）
+        if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+           let firstURL = fileURLs.first,
+           firstURL.isFileURL {
+            // 检查是否是图片文件
+            let imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "heic", "heif", "webp", "ico", "icns"]
+            let fileExtension = firstURL.pathExtension.lowercased()
+            
+            if imageExtensions.contains(fileExtension) {
+                // 尝试从文件加载图片
+                if let image = NSImage(contentsOf: firstURL) {
+                    // 保存文件URL数据（优先）
+                    if let fileURLData = pasteboard.data(forType: .fileURL) {
+                        representations[NSPasteboard.PasteboardType.fileURL.rawValue] = fileURLData
+                    }
+                    if let fileNameData = pasteboard.data(forType: NSPasteboard.PasteboardType("public.file-url")) {
+                        representations["public.file-url"] = fileNameData
+                    }
+                    
+                    // 尝试读取原始文件数据
+                    var originalFileData: Data? = nil
+                    if let fileData = try? Data(contentsOf: firstURL) {
+                        originalFileData = fileData
+                        // 根据文件扩展名设置对应的UTI
+                        switch fileExtension {
+                        case "png":
+                            representations["public.png"] = fileData
+                        case "jpg", "jpeg":
+                            representations["public.jpeg"] = fileData
+                        case "gif":
+                            representations["com.compuserve.gif"] = fileData
+                        case "tiff", "tif":
+                            representations[NSPasteboard.PasteboardType.tiff.rawValue] = fileData
+                        case "heic", "heif":
+                            representations["public.heic"] = fileData
+                        default:
+                            break
+                        }
+                    }
+                    
+                    // 保存图片数据的所有格式
+                    if let tiff = image.tiffRepresentation {
+                        representations[NSPasteboard.PasteboardType.tiff.rawValue] = tiff
+                    }
+                    
+                    // 尝试获取粘贴板中的原始格式数据（可能比文件数据更准确）
+                    if let pngData = pasteboard.data(forType: NSPasteboard.PasteboardType("public.png")) {
+                        representations["public.png"] = pngData
+                    }
+                    if let jpegData = pasteboard.data(forType: NSPasteboard.PasteboardType("public.jpeg")) {
+                        representations["public.jpeg"] = jpegData
+                    }
+                    
+                    // 转换为PNG用于存储和预览
+                    if let imageData = image.tiffRepresentation,
+                       let bitmap = NSBitmapImageRep(data: imageData),
+                       let pngData = bitmap.representation(using: .png, properties: [:]) {
+                        
+                        // 优先使用原始文件数据作为content，如果没有则使用PNG
+                        let contentData = originalFileData ?? pngData
+                        
+                        let preview = "🖼️ 图片 (\(Int(image.size.width))x\(Int(image.size.height)))"
+                        let item = PasteboardItem(
+                            type: .image,
+                            content: contentData,
+                            preview: preview,
+                            imageData: pngData,
+                            representations: representations.isEmpty ? nil : representations
+                        )
+                        addItem(item)
+                        return
+                    }
+                }
+            }
+        }
+        
+        // 检查图片数据（直接复制图片内容时）
         if let image = pasteboard.readObjects(forClasses: [NSImage.self], options: nil)?.first as? NSImage {
             if let imageData = image.tiffRepresentation,
                let bitmap = NSBitmapImageRep(data: imageData),
                let pngData = bitmap.representation(using: .png, properties: [:]) {
                 
-                // 保存原始 tiff
+                // 保存所有可用的图片格式
                 if let tiff = image.tiffRepresentation {
                     representations[NSPasteboard.PasteboardType.tiff.rawValue] = tiff
+                }
+                
+                // 尝试获取原始格式数据
+                if let pngDataRaw = pasteboard.data(forType: NSPasteboard.PasteboardType("public.png")) {
+                    representations["public.png"] = pngDataRaw
+                }
+                if let jpegData = pasteboard.data(forType: NSPasteboard.PasteboardType("public.jpeg")) {
+                    representations["public.jpeg"] = jpegData
+                }
+                if let heicData = pasteboard.data(forType: NSPasteboard.PasteboardType("public.heic")) {
+                    representations["public.heic"] = heicData
                 }
                 
                 let preview = "🖼️ 图片 (\(Int(image.size.width))x\(Int(image.size.height)))"
@@ -86,6 +173,39 @@ class PasteboardManager: ObservableObject {
                 )
                 addItem(item)
                 return
+            }
+        }
+        
+        // 检查原始图片数据（某些应用可能直接提供数据）
+        let imageTypes = [
+            NSPasteboard.PasteboardType("public.png"),
+            NSPasteboard.PasteboardType("public.jpeg"),
+            NSPasteboard.PasteboardType("public.tiff"),
+            NSPasteboard.PasteboardType("public.heic"),
+            NSPasteboard.PasteboardType("com.compuserve.gif")
+        ]
+        
+        for imageType in imageTypes {
+            if let imageData = pasteboard.data(forType: imageType),
+               let image = NSImage(data: imageData) {
+                representations[imageType.rawValue] = imageData
+                
+                // 转换为PNG用于存储和预览
+                if let tiff = image.tiffRepresentation,
+                   let bitmap = NSBitmapImageRep(data: tiff),
+                   let pngData = bitmap.representation(using: .png, properties: [:]) {
+                    
+                    let preview = "🖼️ 图片 (\(Int(image.size.width))x\(Int(image.size.height)))"
+                    let item = PasteboardItem(
+                        type: .image,
+                        content: pngData,
+                        preview: preview,
+                        imageData: pngData,
+                        representations: representations.isEmpty ? nil : representations
+                    )
+                    addItem(item)
+                    return
+                }
             }
         }
         
@@ -177,6 +297,35 @@ class PasteboardManager: ObservableObject {
             for (uti, data) in reps {
                 let type = NSPasteboard.PasteboardType(uti)
                 if pasteboard.setData(data, forType: type) {
+                    wroteAny = true
+                }
+            }
+        }
+        
+        // 对于图片类型，确保图片对象也被写入（即使已有representations）
+        if item.type == .image {
+            // 优先使用原始格式数据
+            if let reps = item.representations {
+                // 检查是否有原始格式数据（PNG、JPEG等）
+                var hasOriginalFormat = false
+                for uti in ["public.png", "public.jpeg", "public.tiff", "public.heic"] {
+                    if reps[uti] != nil {
+                        hasOriginalFormat = true
+                        break
+                    }
+                }
+                
+                // 如果没有原始格式，或者需要确保NSImage对象可用，则写入图片对象
+                if !hasOriginalFormat || !wroteAny {
+                    if let image = NSImage(data: item.content) {
+                        pasteboard.writeObjects([image])
+                        wroteAny = true
+                    }
+                }
+            } else {
+                // 没有representations，直接写入图片对象
+                if let image = NSImage(data: item.content) {
+                    pasteboard.writeObjects([image])
                     wroteAny = true
                 }
             }
