@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// 主窗口视图
 struct MainWindow: View {
@@ -76,10 +77,19 @@ struct MainWindow: View {
                                 pasteItem(item, simulatePaste: true)
                             }
                             .contextMenu {
+                                if item.type == .image {
+                                    Button {
+                                        scanQRCodeFromItem(item)
+                                    } label: {
+                                        Label("识别二维码", systemImage: "qrcode.viewfinder")
+                                    }
+                                    Divider()
+                                }
+                                
                                 Button(role: .destructive) {
                                     deleteItem(item)
                                 } label: {
-                                    Text("删除此条")
+                                    Label("删除此条", systemImage: "trash")
                                 }
                             }
                             .onAppear {
@@ -145,6 +155,14 @@ struct MainWindow: View {
                     pasteItem(filteredItems[index], simulatePaste: false)
                 }
             },
+            onQRCode: {
+                if let index = selectedIndex, index < filteredItems.count {
+                    let item = filteredItems[index]
+                    if item.type == .image {
+                        scanQRCodeFromItem(item)
+                    }
+                }
+            },
             onEscape: {
                 onClose?()
             }
@@ -182,6 +200,48 @@ struct MainWindow: View {
         } else if selectedIndex == nil, !filteredItems.isEmpty {
             selectedIndex = 0
         }
+    }
+    
+    private func scanQRCodeFromItem(_ item: PasteboardItem) {
+        guard item.type == .image else {
+            showAlert(title: "错误", message: "只有图片类型才能识别二维码")
+            return
+        }
+        
+        guard let imageData = item.imageData else {
+            showAlert(title: "错误", message: "图片数据无效")
+            return
+        }
+        
+        // 检查图片是否包含二维码
+        guard QRCodeScanner.containsQRCode(imageData) else {
+            showAlert(title: "未识别到二维码", message: "请确保图片中包含有效的二维码")
+            return
+        }
+        
+        // 扫描二维码
+        guard let result = QRCodeScanner.scanQRCode(from: imageData) else {
+            showAlert(title: "二维码识别失败", message: "无法识别二维码内容")
+            return
+        }
+        
+        // 将识别结果复制到粘贴板
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(result, forType: .string)
+        
+        // 显示成功消息，如果内容太长则截断
+        let displayResult = result.count > 200 ? String(result.prefix(200)) + "..." : result
+        showAlert(title: "二维码识别成功", message: "已识别二维码内容并复制到粘贴板：\n\n\(displayResult)")
+    }
+    
+    private func showAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "确定")
+        alert.runModal()
     }
 }
 
@@ -253,6 +313,7 @@ struct KeyEventHandler: NSViewRepresentable {
     let onDown: () -> Void
     let onEnter: () -> Void
     let onCopy: () -> Void
+    let onQRCode: () -> Void
     let onEscape: () -> Void
     
     func makeNSView(context: Context) -> KeyEventView {
@@ -261,6 +322,7 @@ struct KeyEventHandler: NSViewRepresentable {
         view.onDown = onDown
         view.onEnter = onEnter
         view.onCopy = onCopy
+        view.onQRCode = onQRCode
         view.onEscape = onEscape
         DispatchQueue.main.async {
             view.window?.makeFirstResponder(view)
@@ -276,6 +338,7 @@ class KeyEventView: NSView {
     var onDown: (() -> Void)?
     var onEnter: (() -> Void)?
     var onCopy: (() -> Void)?
+    var onQRCode: (() -> Void)?
     var onEscape: (() -> Void)?
     private var localMonitor: Any?
     
@@ -312,10 +375,17 @@ class KeyEventView: NSView {
     
     private func handle(event: NSEvent) -> Bool {
         if event.modifierFlags.contains(.command),
-           let chars = event.charactersIgnoringModifiers?.lowercased(),
-           chars == "c" {
-            onCopy?()
-            return true
+           let chars = event.charactersIgnoringModifiers?.lowercased() {
+            switch chars {
+            case "c":
+                onCopy?()
+                return true
+            case "q":
+                onQRCode?()
+                return true
+            default:
+                break
+            }
         }
         
         switch event.keyCode {

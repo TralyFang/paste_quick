@@ -34,6 +34,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         let menu = NSMenu()
         menu.addItem(withTitle: "打开粘贴板", action: #selector(openHistory), keyEquivalent: "")
+        menu.addItem(withTitle: "识别二维码", action: #selector(scanQRCode), keyEquivalent: "")
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "设置…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "退出", action: #selector(quitApp), keyEquivalent: "q")
@@ -43,6 +45,56 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func openHistory() { showMainWindow() }
     @objc func openSettings() { showSettingsWindow() }
     @objc func quitApp() { NSApp.terminate(nil) }
+    
+    @objc func scanQRCode() {
+        // 从粘贴板获取图片并识别二维码
+        let pasteboard = NSPasteboard.general
+        
+        // 检查粘贴板中是否有图片
+        let hasImage = pasteboard.data(forType: .png) != nil || 
+                      pasteboard.data(forType: .tiff) != nil
+        
+        guard hasImage else {
+            showAlert(title: "未找到图片", message: "请确保粘贴板中包含图片（PNG、TIFF格式）")
+            return
+        }
+        
+        // 尝试获取图片数据
+        guard let imageData = pasteboard.data(forType: .png) ?? 
+                             pasteboard.data(forType: .tiff) else {
+            showAlert(title: "图片数据无效", message: "无法读取粘贴板中的图片数据")
+            return
+        }
+        
+        // 检查图片是否包含二维码
+        guard QRCodeScanner.containsQRCode(imageData) else {
+            showAlert(title: "未识别到二维码", message: "请确保图片中包含有效的二维码")
+            return
+        }
+        
+        // 扫描二维码
+        guard let result = QRCodeScanner.scanQRCode(from: imageData) else {
+            showAlert(title: "二维码识别失败", message: "无法识别二维码内容")
+            return
+        }
+        
+        // 将识别结果复制到粘贴板
+        pasteboard.clearContents()
+        pasteboard.setString(result, forType: .string)
+        
+        // 显示成功消息，如果内容太长则截断
+        let displayResult = result.count > 200 ? String(result.prefix(200)) + "..." : result
+        showAlert(title: "二维码识别成功", message: "已识别二维码内容并复制到粘贴板：\n\n\(displayResult)")
+    }
+    
+    private func showAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "确定")
+        alert.runModal()
+    }
     
     func showMainWindow() {
         // 如果窗口已存在且可见，则隐藏它；否则显示/创建它
