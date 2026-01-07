@@ -244,13 +244,6 @@ class PasteboardManager: ObservableObject {
         
         // 检查纯文本
         if let string = pasteboard.string(forType: .string), !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            // 避免重复添加相同的文本
-            if let lastItem = items.first, lastItem.type == .text {
-                if let lastText = String(data: lastItem.content, encoding: .utf8), lastText == string {
-                    return // 忽略重复内容
-                }
-            }
-            
             let preview = String(string.prefix(100))
             if let textData = string.data(using: .utf8) {
                 if let plainData = pasteboard.data(forType: .string) {
@@ -274,15 +267,63 @@ class PasteboardManager: ObservableObject {
     private func addItem(_ item: PasteboardItem) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            // 避免重复（基于预览内容）
-            if !self.items.isEmpty && self.items.first?.preview == item.preview {
-                return
+            
+            // 检查是否已存在相同内容
+            if let existingIndex = self.findDuplicateIndex(for: item) {
+                // 如果已存在，将其移动到最前面并更新时间戳
+                let existingItem = self.items.remove(at: existingIndex)
+                let updatedItem = PasteboardItem(
+                    id: existingItem.id, // 保持相同的ID
+                    type: existingItem.type,
+                    content: existingItem.content,
+                    preview: existingItem.preview,
+                    timestamp: Date(), // 更新时间戳
+                    imageData: existingItem.imageData,
+                    representations: existingItem.representations
+                )
+                self.items.insert(updatedItem, at: 0)
+            } else {
+                // 插入新条目到开头
+                self.items.insert(item, at: 0)
             }
             
-            // 插入到开头
-            self.items.insert(item, at: 0)
-            
             self.trimHistoryAndSave()
+        }
+    }
+    
+    /// 查找重复条目的索引
+    private func findDuplicateIndex(for item: PasteboardItem) -> Int? {
+        for (index, existingItem) in items.enumerated() {
+            if isDuplicate(item, existingItem) {
+                return index
+            }
+        }
+        return nil
+    }
+    
+    /// 判断两个条目是否重复
+    private func isDuplicate(_ item1: PasteboardItem, _ item2: PasteboardItem) -> Bool {
+        // 类型不同肯定不是重复
+        if item1.type != item2.type {
+            return false
+        }
+        
+        switch item1.type {
+        case .text:
+            // 对于文本，比较内容数据
+            return item1.content == item2.content
+            
+        case .richText:
+            // 对于富文本，比较内容数据
+            return item1.content == item2.content
+            
+        case .image:
+            // 对于图片，比较内容数据（PNG格式）
+            return item1.content == item2.content
+            
+        case .unknown:
+            // 未知类型，比较内容数据
+            return item1.content == item2.content
         }
     }
     
