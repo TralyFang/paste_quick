@@ -27,11 +27,35 @@
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
     <key>LSUIElement</key>
-    <true/>
+    <false/>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIconName</key>
     <string>AppIcon</string>
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>识别二维码</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>scanQRCodeFromImageService</string>
+            <key>NSPortName</key>
+            <string>PasteQuick</string>
+            <key>NSSendTypes</key>
+            <array>
+                <string>public.image</string>
+            </array>
+            <key>NSReturnTypes</key>
+            <array>
+                <string>public.plain-text</string>
+            </array>
+            <key>NSUserData</key>
+            <string>scanQRCodeService</string>
+        </dict>
+    </array>
 </dict>
 </plist>
 

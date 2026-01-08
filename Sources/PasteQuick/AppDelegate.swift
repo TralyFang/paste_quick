@@ -16,9 +16,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         // 创建状态栏图标
         setupStatusBar()
-        
-        // 设置为不显示在 Dock 中
-        NSApp.setActivationPolicy(.accessory)
+
+        // ① 先用 regular（让系统注册 Service）
+        NSApp.setActivationPolicy(.regular)
+
+        // 注册系统服务
+        NSApp.servicesProvider = self
+        NSUpdateDynamicServices()
+
+        // ② 延迟切回 accessory（隐藏 Dock）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            // 设置为不显示在 Dock 中
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -47,44 +57,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func quitApp() { NSApp.terminate(nil) }
     
     @objc func scanQRCode() {
-        // 从粘贴板获取图片并识别二维码
-        let pasteboard = NSPasteboard.general
-        
-        // 检查粘贴板中是否有图片
-        let hasImage = pasteboard.data(forType: .png) != nil || 
-                      pasteboard.data(forType: .tiff) != nil
-        
-        guard hasImage else {
-            showAlert(title: "未找到图片", message: "请确保粘贴板中包含图片（PNG、TIFF格式）")
-            return
-        }
-        
-        // 尝试获取图片数据
-        guard let imageData = pasteboard.data(forType: .png) ?? 
-                             pasteboard.data(forType: .tiff) else {
-            showAlert(title: "图片数据无效", message: "无法读取粘贴板中的图片数据")
-            return
-        }
-        
-        // 检查图片是否包含二维码
-        guard QRCodeScanner.containsQRCode(imageData) else {
-            showAlert(title: "未识别到二维码", message: "请确保图片中包含有效的二维码")
-            return
-        }
-        
-        // 扫描二维码
-        guard let result = QRCodeScanner.scanQRCode(from: imageData) else {
-            showAlert(title: "二维码识别失败", message: "无法识别二维码内容")
-            return
-        }
-        
-        // 将识别结果复制到粘贴板
-        pasteboard.clearContents()
-        pasteboard.setString(result, forType: .string)
-        
-        // 显示成功消息，如果内容太长则截断
-        let displayResult = result.count > 200 ? String(result.prefix(200)) + "..." : result
-        showAlert(title: "二维码识别成功", message: "已识别二维码内容并复制到粘贴板：\n\n\(displayResult)")
+        // 使用QRCodeService从粘贴板识别二维码
+        QRCodeService.scanQRCodeFromPasteboard(showAlert: showAlert)
     }
     
     private func showAlert(title: String, message: String) {
@@ -201,5 +175,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         pasteboardManager.stopMonitoring()
         pasteboardManager.saveHistorySync() // 同步保存历史，防止退出时丢失
     }
+    
+    // MARK: - 系统服务处理
+    
+    /// 处理图片右键识别二维码服务
+    @objc func scanQRCodeFromImageService(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        // 使用QRCodeService从粘贴板识别二维码（系统服务版本）
+        QRCodeService.scanQRCodeFromPasteboardForService(pboard, error: error)
+    }
+    
 }
 
