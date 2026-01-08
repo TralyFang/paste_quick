@@ -5,7 +5,7 @@
 
 set -e
 
-ICON_SOURCE="Sources/PasteQuick/assets/icon.jpg"
+ICON_SOURCE="Sources/PasteQuick/assets/icon.png"
 ICNS_FILE="AppIcon.icns"
 
 echo "🎨 创建应用图标..."
